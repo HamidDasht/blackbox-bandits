@@ -13,10 +13,12 @@ CLASSIFIERS = {
     "inception_v3": (models.inception_v3, 299),
     "resnet50": (models.resnet50, 224),
     "vgg16_bn": (models.vgg16_bn, 224),
+    "resnet18": (models.resnet18, 32),
 }
 
 NUM_CLASSES = {
-    "imagenet": 1000
+    "imagenet": 1000,
+    "cifar10": 10,
 }
 
 # TODO: change the below to point to the ImageNet validation set,
@@ -26,6 +28,13 @@ NUM_CLASSES = {
 IMAGENET_PATH = ""
 if IMAGENET_PATH == "":
     raise ValueError("Please fill out the path to ImageNet")
+
+CIFAR_10_CHECKPOINT_PATH = ""
+if CIFAR_10_CHECKPOINT_PATH == "":
+    raise ValueError("Please fill out the path to CIFAR_10_CHECKPOINT_PATH")
+CIFAR10_PATH = ""
+if CIFAR10_PATH == "":
+    raise ValueError("Please fill out the path to CIFAR10")
 
 ch.set_default_tensor_type('torch.cuda.FloatTensor')
 
@@ -98,18 +107,26 @@ def make_adversarial_examples(image, true_label, args, model_to_fool, IMAGENET_S
     upsampler = Upsample(size=(IMAGENET_SL, IMAGENET_SL))
     total_queries = ch.zeros(args.batch_size)
     prior = ch.zeros(args.batch_size, 3, prior_size, prior_size)
-    dim = prior.nelement()/args.batch_size
+    dim = prior.nelement()/args.batch_size # Number of pixels along all axis (C, H, W)
     prior_step = gd_prior_step if args.mode == 'l2' else eg_step
     image_step = l2_image_step if args.mode == 'l2' else linf_step
     proj_maker = l2_proj if args.mode == 'l2' else linf_proj
     proj_step = proj_maker(image, args.epsilon)
     print(image.max(), image.min())
 
+    print(image.shape)
+
     # Loss function
     criterion = ch.nn.CrossEntropyLoss(reduction='none')
     def normalized_eval(x):
         x_copy = x.clone()
-        x_copy = ch.stack([F.normalize(x_copy[i], [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]) \
+        if args.classifier == 'resnet18':
+            # CIFAR10
+            x_copy = ch.stack([F.normalize(x_copy[i], [0.4914, 0.4822, 0.4465], [0.247, 0.243, 0.261]) \
+                        for i in range(args.batch_size)])
+        else:
+            # Imagenet
+            x_copy = ch.stack([F.normalize(x_copy[i], [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]) \
                         for i in range(args.batch_size)])
         return model_to_fool(x_copy)
 
@@ -130,7 +147,7 @@ def make_adversarial_examples(image, true_label, args, model_to_fool, IMAGENET_S
             break
         if not args.nes:
             ## Updating the prior: 
-            # Create noise for exporation, estimate the gradient, and take a PGD step
+            # Create noise for exploration, estimate the gradient, and take a PGD step
             exp_noise = args.exploration*ch.randn_like(prior)/(dim**0.5) 
             # Query deltas for finite difference estimator
             q1 = upsampler(prior + exp_noise)
@@ -146,10 +163,13 @@ def make_adversarial_examples(image, true_label, args, model_to_fool, IMAGENET_S
             prior = prior_step(prior, est_grad, args.online_lr)
         else:
             prior = ch.zeros_like(image)
-            for _ in range(args.gradient_iters):
+            for i in range(args.gradient_iters):
                 exp_noise = ch.randn_like(image)/(dim**0.5) 
                 est_deriv = (L(image + args.fd_eta*exp_noise) - L(image - args.fd_eta*exp_noise))/args.fd_eta
                 prior += est_deriv.view(-1, 1, 1, 1)*exp_noise
+
+                if args.log_progress():
+                    print(f"iter {i}/{args.gradient_iters}")
 
             # Preserve images that are already done, 
             # Unless we are specifically measuring gradient estimation
@@ -197,7 +217,12 @@ def make_adversarial_examples(image, true_label, args, model_to_fool, IMAGENET_S
     }
 
 def main(args, model_to_fool, dataset_size):
-    dataset = ImageFolder(IMAGENET_PATH, 
+    if args.classifier == "resnet18":
+        dataset_path = CIFAR10_PATH
+    else:
+        dataset_path = IMAGENET_PATH
+    
+    dataset = ImageFolder(dataset_path, 
                     transforms.Compose([
                         transforms.Resize(dataset_size),
                         transforms.CenterCrop(dataset_size),
@@ -208,7 +233,7 @@ def main(args, model_to_fool, dataset_size):
     for i, (images, targets) in enumerate(dataset_loader):
         if i*args.batch_size >= args.total_images:
             break
-        res = make_adversarial_examples(images.cuda(), targets.cuda(), args, model_to_fool, dataset_size)
+        res = make_adversarial_examples(images.cuda(), targets.cuda(), args, model_to_fool.cuda(), dataset_size)
         ncc = res['num_correctly_classified'] # Number of correctly classified images (originally)
         num_adv = ncc * res['success_rate'] # Success rate was calculated as (# adv)/(# correct classified)
         queries = num_adv * res['average_queries'] # Average queries was calculated as (total queries for advs)/(# advs)
@@ -269,7 +294,11 @@ if __name__ == "__main__":
         args_dict = defaults
     
     model_type = CLASSIFIERS[args.classifier][0]
-    model_to_fool = model_type(pretrained=True).cuda()
+    if args.classifier == "resnet18":
+        checkpoint = ch.load(CIFAR_10_CHECKPOINT_PATH)
+        model_to_fool = model_type().cuda().load_state_dict(checkpoint['model_state_dict'])
+    else:
+        model_to_fool = model_type(pretrained=True).cuda()
     model_to_fool = DataParallel(model_to_fool)
     model_to_fool.eval()
 
