@@ -4,7 +4,7 @@
     "image_lr": 0.01, 
     "mode": "linf",
     "epsilon": 0.05,
-    "batch_size": 500,
+    "batch_size": 1000,
     "gradient_iters": 50,
-    "total_images": 10000
+    "total_images": 1000
 }

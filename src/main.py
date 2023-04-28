@@ -1,5 +1,6 @@
 import torch as ch
 from torchvision import models, transforms
+import torchvision
 from torchvision.datasets import ImageFolder
 import torchvision.transforms.functional as F
 from torch.utils.data import DataLoader
@@ -21,20 +22,22 @@ NUM_CLASSES = {
     "cifar10": 10,
 }
 
+device = ch.device('cuda') if ch.cuda.is_available() else ch.device('cpu')
+
 # TODO: change the below to point to the ImageNet validation set,
 # formatted for PyTorch ImageFolder
 # Instructions for how to do this can be found at:
 # https://github.com/facebook/fb.resnet.torch/blob/master/INSTALL.md#download-the-imagenet-dataset
-IMAGENET_PATH = ""
-if IMAGENET_PATH == "":
-    raise ValueError("Please fill out the path to ImageNet")
+#IMAGENET_PATH = ""
+#if IMAGENET_PATH == "":
+    #raise ValueError("Please fill out the path to ImageNet")
 
-CIFAR_10_CHECKPOINT_PATH = ""
+CIFAR_10_CHECKPOINT_PATH = "/content/ckpt (2).pth"
 if CIFAR_10_CHECKPOINT_PATH == "":
     raise ValueError("Please fill out the path to CIFAR_10_CHECKPOINT_PATH")
-CIFAR10_PATH = ""
-if CIFAR10_PATH == "":
-    raise ValueError("Please fill out the path to CIFAR10")
+#CIFAR10_PATH = ""
+#if CIFAR10_PATH == "":
+    #raise ValueError("Please fill out the path to CIFAR10")
 
 ch.set_default_tensor_type('torch.cuda.FloatTensor')
 
@@ -168,8 +171,9 @@ def make_adversarial_examples(image, true_label, args, model_to_fool, IMAGENET_S
                 est_deriv = (L(image + args.fd_eta*exp_noise) - L(image - args.fd_eta*exp_noise))/args.fd_eta
                 prior += est_deriv.view(-1, 1, 1, 1)*exp_noise
 
-                if args.log_progress():
-                    print(f"iter {i}/{args.gradient_iters}")
+                if args.log_progress:
+                    pass
+                    #print(f"iter {i}/{args.gradient_iters}")
 
             # Preserve images that are already done, 
             # Unless we are specifically measuring gradient estimation
@@ -184,7 +188,7 @@ def make_adversarial_examples(image, true_label, args, model_to_fool, IMAGENET_S
             if not ch.all(norm(image - orig_images) <= args.epsilon + 1e-3):
                 pdb.set_trace()
         else:
-            if not (image - orig_images).max() <= args.epsilon + 1e-3:
+            if not ch.abs(image - orig_images).max() <= args.epsilon + 1e-3:
                 pdb.set_trace()
 
         ## Continue query count
@@ -218,11 +222,16 @@ def make_adversarial_examples(image, true_label, args, model_to_fool, IMAGENET_S
 
 def main(args, model_to_fool, dataset_size):
     if args.classifier == "resnet18":
-        dataset_path = CIFAR10_PATH
+        transform_test = transforms.Compose([
+            transforms.ToTensor(),
+            #transforms.Normalize((0.4914, 0.4822, 0.4465), (0.2023, 0.1994, 0.2010)),
+        ])
+        dataset = torchvision.datasets.CIFAR10(
+            root='./data', train=False, download=True, transform=transform_test)
+
     else:
         dataset_path = IMAGENET_PATH
-    
-    dataset = ImageFolder(dataset_path, 
+        dataset = ImageFolder(dataset_path, 
                     transforms.Compose([
                         transforms.Resize(dataset_size),
                         transforms.CenterCrop(dataset_size),
@@ -296,7 +305,11 @@ if __name__ == "__main__":
     model_type = CLASSIFIERS[args.classifier][0]
     if args.classifier == "resnet18":
         checkpoint = ch.load(CIFAR_10_CHECKPOINT_PATH)
-        model_to_fool = model_type().cuda().load_state_dict(checkpoint['model_state_dict'])
+        net = model_type(num_classes=10).to(device)
+        net = ch.nn.DataParallel(net)
+        net.load_state_dict(checkpoint['net'])
+        model_to_fool = net
+
     else:
         model_to_fool = model_type(pretrained=True).cuda()
     model_to_fool = DataParallel(model_to_fool)
