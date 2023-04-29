@@ -9,12 +9,13 @@ from torch.nn.modules import Upsample
 import argparse
 import json
 import pdb
+from resnet import ResNet18
 
 CLASSIFIERS = {
     "inception_v3": (models.inception_v3, 299),
     "resnet50": (models.resnet50, 224),
     "vgg16_bn": (models.vgg16_bn, 224),
-    "resnet18": (models.resnet18, 32),
+    "resnet18": (ResNet18, 32),
 }
 
 NUM_CLASSES = {
@@ -32,7 +33,7 @@ device = ch.device('cuda') if ch.cuda.is_available() else ch.device('cpu')
 #if IMAGENET_PATH == "":
     #raise ValueError("Please fill out the path to ImageNet")
 
-CIFAR_10_CHECKPOINT_PATH = "/content/ckpt (2).pth"
+CIFAR_10_CHECKPOINT_PATH = "/content/ckpt.pth"
 if CIFAR_10_CHECKPOINT_PATH == "":
     raise ValueError("Please fill out the path to CIFAR_10_CHECKPOINT_PATH")
 #CIFAR10_PATH = ""
@@ -305,7 +306,7 @@ if __name__ == "__main__":
     model_type = CLASSIFIERS[args.classifier][0]
     if args.classifier == "resnet18":
         checkpoint = ch.load(CIFAR_10_CHECKPOINT_PATH)
-        net = model_type(num_classes=10).to(device)
+        net = model_type().to(device)
         net = ch.nn.DataParallel(net)
         net.load_state_dict(checkpoint['net'])
         model_to_fool = net
