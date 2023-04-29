@@ -33,7 +33,7 @@ device = ch.device('cuda') if ch.cuda.is_available() else ch.device('cpu')
 #if IMAGENET_PATH == "":
     #raise ValueError("Please fill out the path to ImageNet")
 
-CIFAR_10_CHECKPOINT_PATH = "/content/ckpt.pth"
+CIFAR_10_CHECKPOINT_PATH = "./ckpt.pth"
 if CIFAR_10_CHECKPOINT_PATH == "":
     raise ValueError("Please fill out the path to CIFAR_10_CHECKPOINT_PATH")
 #CIFAR10_PATH = ""
