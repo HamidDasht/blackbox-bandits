@@ -126,8 +126,9 @@ def make_adversarial_examples(image, true_label, args, model_to_fool, IMAGENET_S
         x_copy = x.clone()
         if args.classifier == 'resnet18':
             # CIFAR10
-            x_copy = ch.stack([F.normalize(x_copy[i], [0.4914, 0.4822, 0.4465], [0.247, 0.243, 0.261]) \
-                        for i in range(args.batch_size)])
+            #x_copy = ch.stack([F.normalize(x_copy[i], [0.4914, 0.4822, 0.4465], [0.247, 0.243, 0.261]) \
+            #            for i in range(args.batch_size)])
+            x_copy = ch.stack([x_copy[i] for i in range(args.batch_size)])
         else:
             # Imagenet
             x_copy = ch.stack([F.normalize(x_copy[i], [0.485, 0.456, 0.406], [0.229, 0.224, 0.225]) \
