@@ -314,7 +314,7 @@ if __name__ == "__main__":
 
     else:
         model_to_fool = model_type(pretrained=True).cuda()
-    model_to_fool = DataParallel(model_to_fool)
+        model_to_fool = DataParallel(model_to_fool)
     model_to_fool.eval()
 
     with ch.no_grad():
