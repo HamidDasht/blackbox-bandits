@@ -170,7 +170,7 @@ def make_adversarial_examples(image, true_label, args, model_to_fool, IMAGENET_S
             prior = ch.zeros_like(image)
             for i in range(args.gradient_iters):
                 exp_noise = ch.randn_like(image)/(dim**0.5) 
-                est_deriv = (L(image + args.fd_eta*exp_noise) - L(image - args.fd_eta*exp_noise))/args.fd_eta
+                est_deriv = (L(image + args.fd_eta*exp_noise) - L(image - args.fd_eta*exp_noise))/(args.fd_eta*2.)
                 prior += est_deriv.view(-1, 1, 1, 1)*exp_noise
 
                 if args.log_progress:
